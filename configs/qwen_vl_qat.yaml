@@ -1,0 +1,40 @@
+device: cpu
+output_dir: output/qwen2_5_vl_qat
+quantization:
+    pipeline:
+        - qat
+    qat:
+        algorithm: EfficientQat
+        batch_size: 2
+        cache_dir: ./cache/EfficientQAT/
+        calib_dataset: wikitext
+        clip_gard: 0.5
+        e2e:
+            bf16: false
+            conv_temp: llama-2
+            dataset: alpaca
+            eval_dataset_size: 2
+            gradient_checkpointing: true
+            learning_rate: 2.0e-05
+            max_eval_samples: null
+            max_train_samples: 2
+            predict_with_generate: false
+            pt_context_len: 1024
+            train_on_source: false
+            wbits: 4
+        early_stop: 0
+        epochs: 2
+        group_size: 128
+        min_lr_factor: 20
+        net: null
+        off_load_to_disk: false
+        quant_lr: 0.0001
+        real_quant: false
+        save_quant_dir: true
+        seed: 0
+        train_size: 2
+        training_seqlen: 1024
+        val_size: 64
+        wbits: 4
+        wd: 0
+        weight_lr: 1.0e-05

@@ -1,0 +1,25 @@
+device: cuda
+evaluation:
+    batchsize: 2
+    num_samples: 128
+    output_dir: output
+    save_output: true
+    seqlength: 2048
+    task:
+        COCO_VAL:
+            class: ImageCaptionDataset
+            dataset: COCO_VAL
+output_dir: output
+quantization:
+    bit_allocation:
+        algorithm: ShortGpt
+        num_samples: 64
+    pipeline:
+        - ptq
+    ptq:
+        algorithm: Gptq
+        datasetname: wikitext
+        groupsize: 64
+        numsamples: 64
+        sym: true
+        wbits: 4

@@ -1,0 +1,16 @@
+device: cpu
+output_dir: output/quarot_gptq
+quantization:
+    outlier_reduction:
+        algorithm: QuaRot
+        online: false
+    pipeline:
+        - outlier_reduction
+        - ptq
+    ptq:
+        algorithm: Gptq
+        datasetname: wikitext
+        groupsize: 64
+        numsamples: 64
+        sym: true
+        wbits: 4

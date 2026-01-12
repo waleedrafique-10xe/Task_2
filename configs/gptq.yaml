@@ -1,0 +1,17 @@
+device: cuda
+evaluation:
+    tasks:
+        MMMU_DEV_VAL:
+            class: MMMUDataset
+            dataset: MMMU_DEV_VAL
+output_dir: output/gptq
+quantization:
+    pipeline:
+        - ptq
+    ptq:
+        algorithm: Gptq
+        datasetname: wikitext
+        groupsize: 64
+        numsamples: 64
+        sym: true
+        wbits: 4

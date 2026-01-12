@@ -1,0 +1,30 @@
+device: cuda
+evaluation:
+    tasks:
+        MMMU_DEV_VAL:
+            class: MMMUDataset
+            dataset: MMMU_DEV_VAL
+output_dir: output/spinquant_shortgpt_gptq
+quantization:
+    bit_allocation:
+        algorithm: ShortGpt
+        bitwidth_options:
+            - 3
+            - 4
+        n_prune_layers: 15
+        num_samples: 64
+        target_avg_bitwidth: 4
+    outlier_reduction:
+        algorithm: SpinQuant
+        online: false
+    pipeline:
+        - outlier_reduction
+        - bit_allocation
+        - ptq
+    ptq:
+        algorithm: Gptq
+        datasetname: wikitext
+        groupsize: 64
+        numsamples: 64
+        sym: true
+        wbits: 4

@@ -1,0 +1,633 @@
+# ============================================================================
+# GenAIQuant Configuration File
+# ============================================================================
+# This file configures the GenAIQuant quantization pipeline for model compression.
+# All parameters shown with their default or example values.
+
+# ----------------------------------------------------------------------------
+# GENERAL SETTINGS
+# ----------------------------------------------------------------------------
+
+# Device to run quantization on (e.g., 'cuda:0', 'cuda:1', 'cpu')
+# Default: 'cuda:0'
+device: cuda:0
+
+# Directory where quantized models and outputs will be saved
+# Default: 'output'
+# OPTIONAL: Can be any valid directory path
+output_dir: output
+
+# ----------------------------------------------------------------------------
+# EVALUATION CONFIGURATION
+# ----------------------------------------------------------------------------
+# Configuration for testing the quantized model performance
+# Default: null (no evaluation)
+# OPTIONAL: Set to null to skip evaluation, or configure as shown below
+
+# Example evaluation configuration (currently set to null):
+evaluation: null
+
+# To enable evaluation, uncomment and configure the following:
+# evaluation:
+#     # Tasks to evaluate the model on
+#     # This is a dictionary where keys are task names and values are task-specific settings
+#     # Supported benchmarks include LM-Eval Benchmarks and VlmEvalKit Benchmarks, and Perplexity
+#     # Example tasks: 'mmlu', 'MMMU', 'wikitext'
+#     # REQUIRED if evaluation is enabled
+#     tasks:
+#         # Example LM-Eval Benchmark: Multiple choice question answering
+#         mmlu:
+#             # Number of few-shot examples
+#             num_fewshot: 5
+#             # Batch size for evaluation
+#             batch_size: 1
+#             # Limit the number of samples
+#             limit: 10
+#
+#
+#
+#
+#
+#         # Example VlmEvalKit Benchmarks
+#        TextVQA_VAL:
+#           class: ImageVQADataset
+#           dataset: TextVQA_VAL
+#           num_samples: 10
+#
+#        MMMU_DEV_VAL:
+#           class: MMMUDataset
+#           dataset: MMMU_DEV_VAL
+#
+#        MMBench_dev_en:
+#           class: ImageMCQDataset
+#           dataset: MMBench_dev_en
+#
+#         # Example: Perplexity with WikiText
+#         wikitext:
+#             num_samples: 10
+#             batch_size: 1
+#
+#         # Example: Run Sanity check on Quantized model with some sample prompts
+#         sanity: null
+#
+#     # Device mapping strategy for model loading
+#     # Options: 'auto', 'balanced', or specific device like 'cuda:0'
+#     # Default: 'auto'
+#     device_map: auto
+#
+#     # Whether to use weight-only quantization for evaluation
+#     # Default: false
+#     # OPTIONAL: Set to true to quantize only weights (not activations) during evaluation
+#     weight_only: false
+#
+#     # Generation parameters for text generation tasks
+#     # Default: null (no generation)
+#     # OPTIONAL: Configure for tasks that require text generation
+#     generation:
+#         # Maximum number of new tokens to generate
+#         max_new_tokens: 100
+#         # Temperature for sampling (higher = more random)
+#         temperature: 0.7
+#         # Top-p (nucleus) sampling parameter
+#         top_p: 0.9
+#         # Top-k sampling parameter
+#         top_k: 50
+#         # Whether to use sampling (vs greedy decoding)
+#         do_sample: true
+#         # Repetition penalty
+#         repetition_penalty: 1.0
+
+# ----------------------------------------------------------------------------
+# ACTIVATION QUANTIZATION CONFIG (a_qconfig)
+# ----------------------------------------------------------------------------
+# Configures how activations are quantized for different model types
+
+a_qconfig:
+    # Activation quantization settings for language modality
+    language:
+        # Number of bits for activation quantization
+        # Default: 8
+        # Range: Typically 4-8 bits
+        n_bits: 8
+
+        # Group size for per-group quantization
+        # Default: 64
+        # OPTIONAL: Set to null for per-tensor quantization
+        # Smaller values = more fine-grained quantization but higher memory overhead
+        group_size: 64
+
+        # Whether quantization scales must be powers of two
+        # Default: true
+        # Power-of-two scales enable efficient bit-shift operations
+        is_two_power: true
+
+        # Whether to use asymmetric quantization (with zero-point offset)
+        # Default: false
+        # Asymmetric can better handle non-centered distributions
+        offset_enabled: false
+
+    # Activation quantization settings for vision modality
+    vision:
+        n_bits: 8
+        group_size: 64
+        is_two_power: true
+        offset_enabled: false
+
+# ----------------------------------------------------------------------------
+# WEIGHT QUANTIZATION CONFIG (w_qconfig)
+# ----------------------------------------------------------------------------
+# Configures how weights are quantized for different model types
+
+w_qconfig:
+    # Weight quantization settings for language models
+    language:
+        # Number of bits for weight quantization
+        # Default: 4
+        # Lower bits = higher compression but potential accuracy loss
+        n_bits: 4
+
+        # Group size for per-group quantization
+        # Default: 64
+        # OPTIONAL: Set to null for per-channel quantization
+        group_size: 64
+
+        # Whether quantization scales must be powers of two
+        # Default: false
+        # Non-power-of-two allows more flexible quantization
+        is_two_power: false
+
+        # Whether to use asymmetric quantization
+        # Default: true
+        # Recommended for weights to handle asymmetric distributions
+        offset_enabled: true
+
+    # Weight quantization settings for vision models
+    vision:
+        n_bits: 8
+        # Per-channel quantization (no grouping)
+        group_size: null
+        is_two_power: false
+        offset_enabled: false
+
+# ----------------------------------------------------------------------------
+# QUANTIZATION PIPELINE
+# ----------------------------------------------------------------------------
+# Main configuration for the quantization process
+
+quantization:
+    # pipeline modules to execute
+    # Available modules: outlier_reduction, bit_allocation, ptq, qat
+    # Default: [outlier_reduction, bit_allocation, qat]
+    # OPTIONAL: Remove or add modules as needed
+    pipeline: [outlier_reduction, bit_allocation, qat]
+
+    # ========================================================================
+    # OUTLIER REDUCTION MODULE
+    # ========================================================================
+    # Reduces activation outliers to improve quantization quality
+
+    outlier_reduction:
+        # Algorithm to use for outlier reduction
+        # Available: 'SpinQuant', 'QuaRot', etc.
+        # Default: 'SpinQuant'
+        algorithm: "SpinQuant"
+
+        # Whether to use online hooks (operations on activations during inference)
+        # Default: false
+        # OPTIONAL: Enable for runtime outlier handling
+        online: false
+
+        # Type of rotation matrix to use
+        # Options: 'hadamard', 'random'
+        # Default: 'hadamard'
+        # Hadamard rotation helps distribute outliers
+        rotate_mode: hadamard
+
+        # --- Weight Quantization Settings for Outlier Reduction ---
+
+        # Weight bits for outlier detection
+        # Default: 4
+        w_bits: 4
+
+        # Use asymmetric quantization for weights
+        # Default: false
+        w_asym: false
+
+        # Enable weight clipping to handle outliers
+        # Default: true
+        w_clip: true
+
+        # Weight group size for quantization
+        # Default: -1 (per-channel)
+        # OPTIONAL: Set to positive value for grouping
+        w_groupsize: -1
+
+        # --- Activation Quantization Settings ---
+
+        # Activation bits
+        # Default: 4
+        a_bits: 4
+
+        # Use asymmetric quantization for activations
+        # Default: true
+        a_asym: true
+
+        # Clipping ratio for activation quantization
+        # Default: 1.0 (no clipping)
+        # OPTIONAL: Values < 1.0 clip outliers
+        a_clip_ratio: 1.0
+
+        # Activation group size
+        # Default: -1 (per-tensor)
+        a_groupsize: -1
+
+        # --- Key (K) Quantization Settings (for attention mechanisms) ---
+
+        # Key bits
+        # Default: 4
+        k_bits: 4
+
+        # Asymmetric quantization for keys
+        # Default: true
+        k_asym: true
+
+        # Clipping ratio for keys
+        # Default: 1.0
+        k_clip_ratio: 1.0
+
+        # Key group size
+        # Default: 128
+        k_groupsize: 128
+
+        # --- Value (V) Quantization Settings (for attention mechanisms) ---
+
+        # Value bits
+        # Default: 4
+        v_bits: 4
+
+        # Asymmetric quantization for values
+        # Default: true
+        v_asym: true
+
+        # Clipping ratio for values
+        # Default: 1.0
+        v_clip_ratio: 1.0
+
+        # --- Advanced Options ---
+
+        # Use INT8 for down projection layers
+        # Default: false
+        # OPTIONAL: Can improve stability for specific layers
+        int8_down_proj: false
+
+        # Use FP32 precision for Hadamard transformations
+        # Default: false
+        # OPTIONAL: Improves accuracy at cost of memory
+        fp32_had: false
+
+    # ========================================================================
+    # BIT ALLOCATION MODULE
+    # ========================================================================
+    # Allocates different bit-widths to different layers based on sensitivity
+
+    bit_allocation:
+        # Algorithm to use for bit allocation
+        # Available: 'ShortGpt', etc.
+        # Default: 'ShortGpt'
+        algorithm: ShortGpt
+
+        # Target average bit-width across all layers
+        # Default: 3
+        # Lower values = higher compression
+        target_avg_bitwidth: 3
+
+        # Available bit-width options for allocation
+        # Default: [2, 3, 4]
+        # Each layer will be assigned one of these bit-widths
+        bitwidth_options: [2, 3, 4]
+
+        # Dataset name for calibration
+        # Default: 'wikitext'
+        # OPTIONAL: Use dataset representative of your use case
+        dataset_name: wikitext
+
+        # Number of calibration samples
+        # Default: 128
+        # More samples = better allocation but slower
+        num_samples: 128
+
+        # Sequence length for calibration samples
+        # Default: 1024
+        seq_len: 1024
+
+        # Number of layers to reduce to 2 bits (pruning)
+        # Default: 6
+        # OPTIONAL: Set to 0 to disable pruning
+        n_prune_layers: 6
+
+    # ========================================================================
+    # POST-TRAINING QUANTIZATION (PTQ) MODULE
+    # ========================================================================
+    # Applies quantization without additional training
+
+    ptq:
+        # PTQ algorithm to use
+        # Available: 'Gptq', etc.
+        # Default: 'Gptq'
+        algorithm: Gptq
+
+        # Number of calibration samples
+        # Default: 128
+        numsamples: 128
+
+        # Weight bit-width
+        # Default: 4
+        wbits: 4
+
+        # Use symmetric quantization
+        # Default: false
+        # OPTIONAL: Symmetric is simpler but may be less accurate
+        sym: false
+
+        # Group size for quantization
+        # Default: -1 (per-channel)
+        # OPTIONAL: Positive values enable per-group quantization
+        groupsize: -1
+
+        # Dataset for calibration
+        # Default: 'wikitext'
+        datasetname: wikitext
+
+    # ========================================================================
+    # QUANTIZATION-AWARE TRAINING (QAT) MODULE
+    # ========================================================================
+    # Fine-tunes the model with quantization to recover accuracy
+
+    qat:
+        # QAT algorithm to use
+        # Available: 'EfficientQat', etc.
+        # Default: 'EfficientQat'
+        algorithm: EfficientQat
+
+        # Directory for caching intermediate results
+        # Default: './cache/EfficientQAT/'
+        # OPTIONAL: Change to preferred cache location
+        cache_dir: ./cache/EfficientQAT/
+
+        # Whether to save the quantized model directory
+        # Default: true
+        save_quant_dir: true
+
+        # Calibration dataset name
+        # Default: 'wikitext'
+        calib_dataset: wikitext
+
+        # Sequence length for training samples
+        # Default: 2048
+        training_seqlen: 2048
+
+        # Number of training samples
+        # Default: 4096
+        train_size: 4096
+
+        # Number of validation samples
+        # Default: 64
+        val_size: 64
+
+        # Whether this is a multimodal model
+        # Default: false
+        # OPTIONAL: Enable for vision-language models
+        multimodal: false
+
+        # Batch size for training
+        # Default: 2
+        batch_size: 2
+
+        # Number of training epochs
+        # Default: 2
+        epochs: 2
+
+        # Weight bit-width for QAT
+        # Default: 4
+        wbits: 4
+
+        # Group size for quantization
+        # Default: 128
+        group_size: 128
+
+        # Learning rate for quantization parameters
+        # Default: 1e-4
+        quant_lr: 0.0001
+
+        # Learning rate for model weights
+        # Default: 1e-5
+        weight_lr: 1.0e-05
+
+        # Minimum learning rate factor for scheduler
+        # Default: 20
+        # Learning rate will be divided by this factor at minimum
+        min_lr_factor: 20
+
+        # Gradient clipping threshold
+        # Default: 0.5
+        # OPTIONAL: Prevents gradient explosion
+        clip_gard: 0.5
+
+        # Weight decay for regularization
+        # Default: 0
+        wd: 0
+
+        # Early stopping patience (epochs without improvement)
+        # Default: 0 (disabled)
+        # OPTIONAL: Set to positive value to enable early stopping
+        early_stop: 0
+
+        # Whether to offload data to disk to save memory
+        # Default: false
+        # OPTIONAL: Enable for very large models
+        off_load_to_disk: false
+
+        # End-to-end training configuration
+        # Default: {} (empty)
+        # OPTIONAL: Advanced end-to-end training settings for full model fine-tuning
+        # Example e2e configuration (currently set to empty):
+        e2e: {}
+
+        # To enable end-to-end training, uncomment and configure the following:
+        # e2e:
+        #     # Whether to enable end-to-end training mode
+        #     # Default: false
+        #     enabled: false
+        #
+        #     # Dataset for end-to-end training
+        #     # OPTIONAL: Specify task-specific dataset
+        #     dataset: 'wikitext'
+        #
+        #     # Number of training samples for e2e
+        #     # Default: 1000
+        #     train_samples: 1000
+        #
+        #     # Number of validation samples
+        #     # Default: 100
+        #     val_samples: 100
+        #
+        #     # Batch size for e2e training
+        #     # Default: 1
+        #     batch_size: 1
+        #
+        #     # Number of e2e training epochs
+        #     # Default: 1
+        #     epochs: 1
+        #
+        #     # Learning rate for end-to-end training
+        #     # Default: 1e-5
+        #     learning_rate: 1.0e-05
+        #
+        #     # Learning rate scheduler type
+        #     # Options: 'constant', 'linear', 'cosine', 'polynomial'
+        #     # Default: 'linear'
+        #     # OPTIONAL: Controls how learning rate changes during training
+        #     lr_scheduler: 'linear'
+        #
+        #     # Warmup steps for learning rate scheduler
+        #     # Default: 0
+        #     # OPTIONAL: Number of steps to warmup learning rate
+        #     warmup_steps: 0
+        #
+        #     # Gradient accumulation steps
+        #     # Default: 1
+        #     # OPTIONAL: Accumulate gradients over multiple steps to simulate larger batch size
+        #     gradient_accumulation_steps: 1
+        #
+        #     # Maximum gradient norm for clipping
+        #     # Default: 1.0
+        #     # OPTIONAL: Prevents gradient explosion
+        #     max_grad_norm: 1.0
+        #
+        #     # Weight decay for regularization
+        #     # Default: 0.01
+        #     weight_decay: 0.01
+        #
+        #     # Optimizer type
+        #     # Options: 'adamw', 'adam', 'sgd'
+        #     # Default: 'adamw'
+        #     optimizer: 'adamw'
+        #
+        #     # Whether to train only quantization parameters or full model
+        #     # Default: false
+        #     # OPTIONAL: Set to true to freeze model weights and train only quant params
+        #     quant_only: false
+        #
+        #     # Evaluation frequency (in steps)
+        #     # Default: 100
+        #     # OPTIONAL: How often to run validation during training
+        #     eval_steps: 100
+        #
+        #     # Save checkpoint frequency (in steps)
+        #     # Default: 500
+        #     # OPTIONAL: How often to save model checkpoints
+        #     save_steps: 500
+        #
+        #     # Logging frequency (in steps)
+        #     # Default: 10
+        #     logging_steps: 10
+
+        # ====================================================================
+        # MULTIMODAL BLOCK-WISE QAT (MBQ) - For Vision Towers
+        # ====================================================================
+        # Special configuration for quantizing vision components of multimodal models
+
+        mbq:
+            # Enable MBQ for vision tower quantization
+            # Default: false
+            # OPTIONAL: Enable only for multimodal models with vision towers
+            enabled: false
+
+            # Multimodal calibration dataset
+            # Default: 'lmms-lab/COCO-Caption2017'
+            # OPTIONAL: Use vision-language dataset for calibration
+            dataset_name: lmms-lab/COCO-Caption2017
+
+            # Batch size for MBQ training
+            # Default: 2
+            batch_size: 2
+
+            # Number of training epochs for vision tower
+            # Default: 2
+            epochs: 2
+
+            # Weight bit-width for vision tower
+            # Default: 4
+            wbits: 4
+
+            # Group size for vision tower quantization
+            # Default: 128
+            group_size: 128
+
+            # Use real quantization for vision tower
+            # Default: false
+            real_quant: false
+
+            # Device for teacher model (knowledge distillation)
+            # Default: null (uses main device)
+            # OPTIONAL: Specify 'cpu' or 'cuda:1' to offload teacher model
+            teacher_device: null
+
+            # Early stopping patience for vision tower training
+            # Default: 0 (disabled)
+            early_stop: 0
+
+            # Offload vision tower data to disk
+            # Default: false
+            off_load_to_disk: false
+
+            # Training mode for vision tower
+            # Options: 'block', 'kd_block', 'global_kd'
+            # - 'block': Feature reconstruction per block
+            # - 'kd_block': Per-block knowledge distillation
+            # - 'global_kd': End-to-end knowledge distillation (future)
+            # Default: 'block'
+            mode: block
+
+            # --- Knowledge Distillation Settings ---
+
+            # Enable knowledge distillation
+            # Default: true
+            kd_enabled: true
+
+            # Loss function for knowledge distillation
+            # Options: 'mse', 'kld'
+            # Default: 'mse'
+            kd_loss: mse
+
+            # Temperature for knowledge distillation softmax
+            # Default: 1.0
+            # Higher values = softer probability distributions
+            temperature: 1.0
+
+            # Weight for knowledge distillation loss component
+            # Default: 1.0
+            kd_weight: 1.0
+
+            # Loss function for MBQ reconstruction
+            # Options: 'mae', 'mse'
+            # Default: 'mae'
+            mbq_loss: mae
+
+            # Weight for MBQ reconstruction loss
+            # Default: 1.0
+            mbq_weight: 1.0
+
+            # Alpha parameter for loss balancing
+            # Default: 1.0
+            alpha: 1.0
+
+            # Use gradient-based weighting for loss components
+            # Default: true
+            use_grad_weighting: true
+
+            # Per-layer bit-width overrides for vision tower
+            # Default: {} (empty)
+            # OPTIONAL: Specify custom bit-widths for specific layers
+            # Example: {'vision_model.encoder.layers.0': 8}
+            vision_bitwidth_overrides: {}

@@ -1,0 +1,22 @@
+device: cuda
+evaluation:
+    task:
+        wikitext:
+            seq_len: 512
+            num_samples: 100
+output_dir: output
+quantization:
+    bit_allocation:
+        algorithm: ShortGpt
+        num_samples: 64
+    pipeline: [outlier_reduction, ptq]
+    outlier_reduction:
+        algorithm: QuaRot
+        online: false
+    ptq:
+        algorithm: Gptq
+        datasetname: wikitext
+        groupsize: 64
+        numsamples: 64
+        sym: true
+        wbits: 4

@@ -1,0 +1,59 @@
+device: cuda
+evaluation:
+    tasks:
+        MMBench_dev_en:
+            class: ImageMCQDataset
+            dataset: MMBench_dev_en
+output_dir: output/spinquant_eqat
+quantization:
+    outlier_reduction:
+        algorithm: SpinQuant
+        max_steps: 100
+        online: false
+        per_device_train_batch_size: 2
+        w_groupsize: 64
+        a_bits: 8
+        k_bits: 8
+        v_bits: 8
+        a_asym: False
+        a_groupsize: 64
+    pipeline:
+        - outlier_reduction
+        - qat
+    qat:
+        algorithm: EfficientQat
+        calib_dataset: redpajama
+        train_size: 4096
+        train_size_in_memory: 1024
+        val_size: 128
+        training_seqlen: 4096
+        batch_size: 2
+        seed: 2
+        wbits: 4
+        group_size: 64
+        quant_lr: 1.0e-4
+        weight_lr: 1.0e-5
+        min_lr_factor: 20
+        wd: 0
+        early_stop: 0
+        cache_dir: ./cache/EfficientQAT/
+        net: null
+        off_load_to_disk: false
+        real_quant: false
+        save_quant_dir: true
+        clip_grad: 0.3
+        e2e:
+            dataset: alpaca
+            pt_context_len: 4096
+            gradient_checkpointing: true
+            learning_rate: 1.0e-05
+            predict_with_generate: false
+            eval_dataset_size: 1024
+            max_train_samples: 4096
+            max_eval_samples: null
+            train_on_source: false
+            conv_temp: llama-2
+            wbits: 4
+            bf16: false
+            allow_multimodal: true
+        mbq: {}

@@ -1,0 +1,51 @@
+device: cuda
+evaluation:
+    tasks:
+        MMMU_DEV_VAL:
+            class: MMMUDataset
+            dataset: MMMU_DEV_VAL
+output_dir: output/quarot_eqat
+quantization:
+    outlier_reduction:
+        algorithm: QuaRot
+        online: false
+    pipeline:
+        - outlier_reduction
+        - qat
+    qat:
+        algorithm: EfficientQat
+        calib_dataset: redpajama
+        train_size: 2
+        train_size_in_memory: 1024
+        val_size: 128
+        training_seqlen: 4096
+        batch_size: 2
+        seed: 2
+        wbits: 4
+        group_size: 64
+        quant_lr: 1.0e-4
+        weight_lr: 1.0e-5
+        min_lr_factor: 20
+        wd: 0
+        early_stop: 0
+        cache_dir: ./cache/EfficientQAT/
+        net: null
+        off_load_to_disk: false
+        real_quant: false
+        save_quant_dir: true
+        clip_grad: 0.3
+        e2e:
+            dataset: alpaca
+            pt_context_len: 4096
+            gradient_checkpointing: true
+            learning_rate: 1.0e-05
+            predict_with_generate: false
+            eval_dataset_size: 2
+            max_train_samples: 2
+            max_eval_samples: null
+            train_on_source: false
+            conv_temp: llama-2
+            wbits: 4
+            bf16: false
+            allow_multimodal: true
+        mbq: {}
