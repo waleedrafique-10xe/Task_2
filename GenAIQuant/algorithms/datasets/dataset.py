@@ -621,3 +621,119 @@ class _CocoCnDataset:
         except Exception as exc:  # pragma: no cover - corrupted payload handling
             logger.warning("COCO-CN: failed to decode %s: %s", url, exc)
             return None
+
+
+class Datasetutils_combined:
+    @staticmethod
+    def get_lm_dataset(
+        tokenizer,
+        dataset_name: str,
+        split,
+        num_samples: int = None, # This will be used only in case of GPTQ
+        train_size: int = None,   # This will be used only in case of EQAT
+        val_size: int = None,      # This will be used only in case of EQAT
+        seed: int = 42,
+        seqlen: int = 2048,
+
+    ):
+        # Initialize the seed
+        random.seed(seed)
+
+        # Initialize the column names which are present in datasets 
+        # and we are interested in. Below mentioned column names are present
+        # in Wikitext and redpajama
+        preferred_columns = {
+            "text",
+            "sentence",
+            "content"
+        }
+        found_column = None
+        train_loader = []
+        validation_loader = []
+        
+
+        # Get the dataset
+        dataset_provider = DatasetProvider()
+        if num_samples is not None:
+            # GPTQ
+            dataset = dataset_provider.get(
+                name_or_path=dataset_name, num_samples=num_samples, split=split
+            )
+        else:
+            # EQAT
+            dataset = dataset_provider.get(
+                name_or_path=dataset_name
+            )
+            # Split the data for training and validation
+            split = dataset.train_test_split(test_size=0.1, seed=seed)
+            train_data, val_data = split["train"], split["test"]
+
+            target_train_tokens = max(1, train_size + val_size) * seqlen
+
+
+        for column in preferred_columns:
+            if column in dataset.column_names:
+                found_column = column
+                break
+        
+        if found_column is None:
+            raise ValueError(
+                f'No valid column found in {dataset.column_names}'
+            )
+        
+        if num_samples is not None:
+            # GPTQ
+            raw_text = tokenizer("\n\n".join(dataset[found_column]), return_tensors="pt")
+        else:
+            # EQAT
+            train_corpus = _concat_until_tokens(
+                train_data,
+                found_column,
+                tokenizer=tokenizer,
+                target_tokens=target_train_tokens,
+            )
+            raw_text = tokenizer(train_corpus, return_tensors="pt")
+
+        if seqlen >= raw_text.input_ids.shape[1]:
+            raise ValueError(
+                f"Sequence length {seqlen} is too long for input"
+                f"length {raw_text.input_ids.shape[1]}"
+            )
+        
+        if num_samples is not None:
+            # GPTQ
+            for _ in range(num_samples):
+                i = random.randint(0, raw_text.input_ids.shape[1] - seqlen - 1)
+                j = i + seqlen
+                inp = raw_text.input_ids[:, i:j]
+                tar = inp.clone()
+                tar[:, :-1] = -100
+                train_loader.append((inp, tar))
+            return train_loader
+        else:
+            val_sample_ratio = (
+                0.9  # sample train from [0:0.9] and val from [0.9:1.0] to avoid overlap
+            )
+            for _ in range(train_size):
+                i = random.randint(
+                    0, int(train_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1
+                )
+                j = i + seqlen
+                inp = train_text.input_ids[:, i:j]
+                tar = inp.clone()
+                tar[:, :-1] = -100
+                train_loader.append((inp, tar))
+            for _ in range(val_size):
+                i = random.randint(
+                    int(train_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1,
+                    train_text.input_ids.shape[1] - seqlen - 1,
+                )
+                j = i + seqlen
+                inp = train_text.input_ids[:, i:j]
+                tar = inp.clone()
+                tar[:, :-1] = -100
+                validation_loader.append((inp, tar))
+            return train_loader, validation_loader
+        
+
+        
