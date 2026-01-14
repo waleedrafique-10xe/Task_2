@@ -1,4 +1,4 @@
-from typing import Iterable, Sequence
+from typing import Iterable, Sequence, Optional
 import tarfile
 import itertools
 import random
@@ -183,271 +183,6 @@ def _build_prompt(processor: ProcessorMixin, caption: str) -> str:
     return caption.strip()
 
 
-class DatasetUtils:
-    """This class contains functions to produce datasets for all of the algorithms"""
-
-                                                                        # PTQ functions
-
-    @staticmethod
-    def get_calib_dataset(datasetname, num_samples, split, seqlen, tokenizer):
-        # TODO: We should take this out of the class and move to a place where
-        # other algorithms might be able to take advantage
-
-        valid_keys = {"text", "sentence"}
-        dataset_key = None
-        dataset_provider = DatasetProvider()
-        dataset = dataset_provider.get(
-            name_or_path=datasetname, num_samples=num_samples, split=split
-        )
-
-        if len(dataset) == 0:
-            raise ValueError("Dataset is empty.")
-
-        train_loader = []
-        random.seed(42)
-        for key_ in valid_keys:
-            if key_ in dataset.features:
-                dataset_key = key_
-                break
-
-        if dataset_key is None:
-            raise ValueError(
-                f"Invalid key for dataset. A valid key should befrom {dataset.features}"
-            )
-
-        raw_text = tokenizer("\n\n".join(dataset[key_]), return_tensors="pt")
-
-        if seqlen >= raw_text.input_ids.shape[1]:
-            raise ValueError(
-                f"Sequence length {seqlen} is too long for input"
-                f"length {raw_text.input_ids.shape[1]}"
-            )
-
-        for _ in range(num_samples):
-            i = random.randint(0, raw_text.input_ids.shape[1] - seqlen - 1)
-            j = i + seqlen
-            inp = raw_text.input_ids[:, i:j]
-            tar = inp.clone()
-            tar[:, :-1] = -100
-            train_loader.append((inp, tar))
-        return train_loader
-
-    @staticmethod
-    def get_vlm_calib_dataset(
-        processor,
-        dataset_name: str,
-        num_samples: int = 128,
-        split: str = "train",
-        oversample_factor: int = 3,
-    ):
-        logger.info(f"Obtaining dataset {dataset_name} from Hugging face")
-        streamed_dataset = load_dataset(dataset_name, split=split, streaming=True)
-
-        # grab a bit extra
-        sampled_iter = itertools.islice(streamed_dataset, num_samples * oversample_factor)
-
-        sampled_list = list(sampled_iter)
-        random.shuffle(sampled_list)
-
-        logger.info(f"Downloaded {len(sampled_list)} samples")
-
-        calib_data = []
-
-        # TODO: 6D nesting doesn''t look good
-        for i, sample in enumerate(sampled_list):
-            if len(calib_data) == num_samples:
-                break
-            images = []
-            messages = []
-
-            for turn in sample["messages"]:
-                content = []
-
-                for count, item in enumerate(turn["content"]):
-                    if item["type"] == "text" and item["text"] is not None:
-                        content.append({"type": "text", "text": item["text"]})
-                    elif item["type"] == "image":
-                        # collect the PIL image and insert an image placeholder
-                        image = sample["images"][item["index"]]
-                        images.append(image)
-                        content.append(
-                            {
-                                "type": "image",
-                                "resized_width": 336,
-                                "resized_height": 336,
-                                "image": image,
-                            }
-                        )
-                messages.append({"role": turn["role"], "content": content})
-
-            prompt = processor.apply_chat_template(
-                messages, tokenize=False, add_generation_prompt=True
-            )
-
-            try:
-                from qwen_vl_utils import process_vision_info
-
-                image_inputs, video_inputs = process_vision_info(messages)
-                inputs = processor(
-                    text=prompt,
-                    images=image_inputs,
-                    videos=video_inputs,
-                    padding=True,
-                    return_tensors="pt",
-                )
-
-            except ValueError as e:
-                logger.warning(
-                    f"Found an invalid image with error: {e}. Skipping this sample"
-                )
-                continue
-
-            calib_data.append(inputs)
-
-        max_seqlen = max([x["input_ids"].shape[1] for x in calib_data])
-        pad_token_id = processor.tokenizer.pad_token_type_id
-
-        for data in calib_data:
-            data["input_ids"] = torch.nn.functional.pad(
-                data["input_ids"],
-                (0, max_seqlen - data["input_ids"].shape[1]),
-                value=pad_token_id,
-            )
-            data["attention_mask"] = torch.nn.functional.pad(
-                data["attention_mask"],
-                (0, max_seqlen - data["attention_mask"].shape[1]),
-                value=1,
-            )
-        # ^ assumes everything is 1 in mask. will fail assumption is violated
-
-        # data["token_type_ids"] = torch.nn.functional.pad(
-        #     data["token_type_ids"],
-        #     (0, max_seqlen - data["token_type_ids"].shape[1]),
-        #     value=0,
-        # )
-        # ^ we assume token_type_ids is a mask that determines which tokens
-        # come from the image. Everything else (including padded tokens)
-        # should be zero as well
-
-        assert len(calib_data) == num_samples
-        logger.info(f"Obtained {num_samples} samples from {dataset_name}")
-        return calib_data
-
-
-
-
-
-                                                                        # EQAT functions
-
-    @staticmethod
-    def get_dataset(
-        tokenizer,
-        dataset_name: str = "wikitext",
-        train_size: int = 128,
-        val_size: int = 32,
-        seed: int = 0,
-        seqlen: int = 2048,
-        test_only: bool = False,
-    ):
-        dataset = DatasetProvider()
-        dataset_ = dataset.get(name_or_path=dataset_name)
-        train_data, val_data = _prepare_train_val_splits(dataset_, seed=seed)
-        text_column = _resolve_text_column(train_data)
-        target_val_tokens = max(1, val_size) * seqlen
-        val_corpus = _concat_until_tokens(
-            val_data, text_column, tokenizer=tokenizer, target_tokens=target_val_tokens
-        )
-        test_text = tokenizer(val_corpus, return_tensors="pt")
-        if test_only:
-            return test_text
-
-        target_train_tokens = max(1, train_size + val_size) * seqlen
-        train_corpus = _concat_until_tokens(
-            train_data,
-            text_column,
-            tokenizer=tokenizer,
-            target_tokens=target_train_tokens,
-        )
-        train_text = tokenizer(train_corpus, return_tensors="pt")
-
-        if train_text.input_ids.shape[1] <= seqlen + 1:
-            raise ValueError(
-                f"Calibration corpus is too small for seqlen={seqlen}. "
-                "Provide a larger dataset or reduce `training_seqlen`."
-            )
-
-        random.seed(seed)
-        train_loader = []
-        validation_loader = []
-
-        val_sample_ratio = (
-            0.9  # sample train from [0:0.9] and val from [0.9:1.0] to avoid overlap
-        )
-        for _ in range(train_size):
-            i = random.randint(
-                0, int(train_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1
-            )
-            j = i + seqlen
-            inp = train_text.input_ids[:, i:j]
-            tar = inp.clone()
-            tar[:, :-1] = -100
-            train_loader.append((inp, tar))
-        valloader = []
-        for _ in range(val_size):
-            i = random.randint(
-                int(train_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1,
-                train_text.input_ids.shape[1] - seqlen - 1,
-            )
-            j = i + seqlen
-            inp = train_text.input_ids[:, i:j]
-            tar = inp.clone()
-            tar[:, :-1] = -100
-            validation_loader.append((inp, tar))
-        return train_loader, validation_loader
-
-    @staticmethod
-    def get_vl_dataset(
-        processor: ProcessorMixin,
-        dataset_name: str,
-        train_size: int,
-        val_size: int,
-        seed: int = 0,
-        train_split: str = "train",
-        val_split: str = "validation",
-        max_length: int | None = None,
-    ) -> tuple[
-        list[tuple[dict[str, torch.Tensor], None]],
-        list[tuple[dict[str, torch.Tensor], None]],
-    ]:
-        """Prepare multimodal calibration data for vision-language models."""
-
-        if dataset_name == "AIMClab-RUC/COCO-CN":
-            loader = _CocoCnDataset(processor=processor, max_length=max_length)
-            train_batch = loader.prepare_split(
-                split=train_split,
-                requested_size=train_size,
-                seed=seed,
-            )
-            val_batch = loader.prepare_split(
-                split=val_split,
-                requested_size=val_size,
-                seed=seed,
-            )
-            return train_batch, val_batch
-
-        train_dataset = _load_split(dataset_name, train_split)
-        val_dataset = _load_split(dataset_name, val_split)
-
-        rng = random.Random(seed)
-        train_samples = _sample_examples(train_dataset, train_size, rng)
-        val_samples = _sample_examples(val_dataset, val_size, rng)
-
-        train_batch = _process_examples(processor, train_samples, train_size, max_length)
-        val_batch = _process_examples(processor, val_samples, val_size, max_length)
-
-        return train_batch, val_batch
-
-
 class _CocoCnDataset:
     """Helper to prepare AIMClab-RUC/COCO-CN samples backed by MS-COCO images."""
 
@@ -623,15 +358,15 @@ class _CocoCnDataset:
             return None
 
 
-class Datasetutils_combined:
+class DatasetUtils:
     @staticmethod
     def get_lm_dataset(
         tokenizer,
         dataset_name: str,
-        split,
+        split: Optional[str] = None,
         num_samples: int = None, # This will be used only in case of GPTQ
-        train_size: int = None,   # This will be used only in case of EQAT
-        val_size: int = None,      # This will be used only in case of EQAT
+        train_size: int = None,  # This will be used only in case of EQAT
+        val_size: int = None,    # This will be used only in case of EQAT
         seed: int = 42,
         seqlen: int = 2048,
 
@@ -665,17 +400,17 @@ class Datasetutils_combined:
                 name_or_path=dataset_name
             )
             # Split the data for training and validation
-            split = dataset.train_test_split(test_size=0.1, seed=seed)
-            train_data, val_data = split["train"], split["test"]
+            train_data, val_data = _prepare_train_val_splits(dataset, seed=seed) # This function can handle different types of Dataset so it is needed
 
             target_train_tokens = max(1, train_size + val_size) * seqlen
+            dataset = train_data # Reassigning dataset so column names checking can be done in single loop
 
 
         for column in preferred_columns:
             if column in dataset.column_names:
                 found_column = column
                 break
-        
+
         if found_column is None:
             raise ValueError(
                 f'No valid column found in {dataset.column_names}'
@@ -697,7 +432,8 @@ class Datasetutils_combined:
         if seqlen >= raw_text.input_ids.shape[1]:
             raise ValueError(
                 f"Sequence length {seqlen} is too long for input"
-                f"length {raw_text.input_ids.shape[1]}"
+                f"length {raw_text.input_ids.shape[1]}. Either provide a\
+                larger dataset or reduce 'training_seqlen' in config file"
             )
         
         if num_samples is not None:
@@ -716,24 +452,166 @@ class Datasetutils_combined:
             )
             for _ in range(train_size):
                 i = random.randint(
-                    0, int(train_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1
+                    0, int(raw_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1
                 )
                 j = i + seqlen
-                inp = train_text.input_ids[:, i:j]
+                inp = raw_text.input_ids[:, i:j]
                 tar = inp.clone()
                 tar[:, :-1] = -100
                 train_loader.append((inp, tar))
             for _ in range(val_size):
                 i = random.randint(
-                    int(train_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1,
-                    train_text.input_ids.shape[1] - seqlen - 1,
+                    int(raw_text.input_ids.shape[1] * val_sample_ratio) - seqlen - 1,
+                    raw_text.input_ids.shape[1] - seqlen - 1,
                 )
                 j = i + seqlen
-                inp = train_text.input_ids[:, i:j]
+                inp = raw_text.input_ids[:, i:j]
                 tar = inp.clone()
                 tar[:, :-1] = -100
                 validation_loader.append((inp, tar))
             return train_loader, validation_loader
         
+    @staticmethod
+    def get_vlm_dataset(
+        processor,
+        dataset_name: str,
+        num_samples: int = 128,
+        split: str = "train",
+        oversample_factor: int = 3,
+    ):
+        logger.info(f"Obtaining dataset {dataset_name} from Hugging face")
+        streamed_dataset = load_dataset(dataset_name, split=split, streaming=True)
 
-        
+        # grab a bit extra
+        sampled_iter = itertools.islice(streamed_dataset, num_samples * oversample_factor)
+
+        sampled_list = list(sampled_iter)
+        random.shuffle(sampled_list)
+
+        logger.info(f"Downloaded {len(sampled_list)} samples")
+
+        calib_data = []
+
+        # TODO: 6D nesting doesn''t look good
+        for i, sample in enumerate(sampled_list):
+            if len(calib_data) == num_samples:
+                break
+            images = []
+            messages = []
+
+            for turn in sample["messages"]:
+                content = []
+
+                for count, item in enumerate(turn["content"]):
+                    if item["type"] == "text" and item["text"] is not None:
+                        content.append({"type": "text", "text": item["text"]})
+                    elif item["type"] == "image":
+                        # collect the PIL image and insert an image placeholder
+                        image = sample["images"][item["index"]]
+                        images.append(image)
+                        content.append(
+                            {
+                                "type": "image",
+                                "resized_width": 336,
+                                "resized_height": 336,
+                                "image": image,
+                            }
+                        )
+                messages.append({"role": turn["role"], "content": content})
+
+            prompt = processor.apply_chat_template(
+                messages, tokenize=False, add_generation_prompt=True
+            )
+
+            try:
+                from qwen_vl_utils import process_vision_info
+
+                image_inputs, video_inputs = process_vision_info(messages)
+                inputs = processor(
+                    text=prompt,
+                    images=image_inputs,
+                    videos=video_inputs,
+                    padding=True,
+                    return_tensors="pt",
+                )
+
+            except ValueError as e:
+                logger.warning(
+                    f"Found an invalid image with error: {e}. Skipping this sample"
+                )
+                continue
+
+            calib_data.append(inputs)
+
+        max_seqlen = max([x["input_ids"].shape[1] for x in calib_data])
+        pad_token_id = processor.tokenizer.pad_token_type_id
+
+        for data in calib_data:
+            data["input_ids"] = torch.nn.functional.pad(
+                data["input_ids"],
+                (0, max_seqlen - data["input_ids"].shape[1]),
+                value=pad_token_id,
+            )
+            # We assume everything is 1 in mask. will fail assumption is violated
+            data["attention_mask"] = torch.nn.functional.pad(
+                data["attention_mask"],
+                (0, max_seqlen - data["attention_mask"].shape[1]),
+                value=1,
+            )
+
+            # We assume token_type_ids is a mask that determines which tokens
+            # come from the image. Everything else (including padded tokens)
+            # should be zero as well
+            data["token_type_ids"] = torch.nn.functional.pad(
+                data["token_type_ids"],
+                (0, max_seqlen - data["token_type_ids"].shape[1]),
+                value=0,
+            )
+
+        assert len(calib_data) == num_samples
+        logger.info(f"Obtained {num_samples} samples from {dataset_name}")
+        return calib_data
+
+    
+    @staticmethod
+    def get_vl_dataset(
+        processor: ProcessorMixin,
+        dataset_name: str,
+        train_size: int,
+        val_size: int,
+        seed: int = 0,
+        train_split: str = "train",
+        val_split: str = "validation",
+        max_length: int | None = None,
+    ) -> tuple[
+        list[tuple[dict[str, torch.Tensor], None]],
+        list[tuple[dict[str, torch.Tensor], None]],
+    ]:
+        """Prepare multimodal calibration data for vision-language models."""
+
+        if dataset_name == "AIMClab-RUC/COCO-CN":
+            loader = _CocoCnDataset(processor=processor, max_length=max_length)
+            train_batch = loader.prepare_split(
+                split=train_split,
+                requested_size=train_size,
+                seed=seed,
+            )
+            val_batch = loader.prepare_split(
+                split=val_split,
+                requested_size=val_size,
+                seed=seed,
+            )
+            return train_batch, val_batch
+
+        train_dataset = _load_split(dataset_name, train_split)
+        val_dataset = _load_split(dataset_name, val_split)
+
+        rng = random.Random(seed)
+        train_samples = _sample_examples(train_dataset, train_size, rng)
+        val_samples = _sample_examples(val_dataset, val_size, rng)
+
+        train_batch = _process_examples(processor, train_samples, train_size, max_length)
+        val_batch = _process_examples(processor, val_samples, val_size, max_length)
+
+        return train_batch, val_batch
+   

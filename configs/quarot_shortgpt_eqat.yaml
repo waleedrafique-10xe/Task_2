@@ -1,9 +1,4 @@
-device: cuda
-evaluation:
-    tasks:
-        MMMU_DEV_VAL:
-            class: MMMUDataset
-            dataset: MMMU_DEV_VAL
+device: cpu
 output_dir: output/quarot_shortgpt_eqat
 quantization:
     bit_allocation:
@@ -24,11 +19,11 @@ quantization:
     qat:
         algorithm: EfficientQat
         calib_dataset: redpajama
-        train_size: 4096
-        train_size_in_memory: 1024
-        val_size: 128
+        train_size: 1
+        train_size_in_memory: null
+        val_size: 1
         training_seqlen: 4096
-        batch_size: 2
+        batch_size: 1
         seed: 2
         wbits: 4
         group_size: 64
@@ -49,8 +44,8 @@ quantization:
             gradient_checkpointing: true
             learning_rate: 1.0e-05
             predict_with_generate: false
-            eval_dataset_size: 1024
-            max_train_samples: 4096
+            eval_dataset_size: 1
+            max_train_samples: 1
             max_eval_samples: null
             train_on_source: false
             conv_temp: llama-2

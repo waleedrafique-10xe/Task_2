@@ -365,7 +365,7 @@ class Gptq(Ptq):
                 )
 
                 for name in subset:
-                    logger.info(f"Quantizing sub layaer: {layer_name}.{name}")
+                    logger.info(f"Quantizing sub layer: {layer_name}.{name}")
 
                     layer_quantizers[name].fasterquant(
                         percdamp=self._percdamp,
@@ -413,18 +413,18 @@ class Gptq(Ptq):
         if model.meta.model_type == ModelType.LLM:
             tokenizer = AutoTokenizer.from_pretrained(model.model_id)
 
-            self._dataset = DatasetUtils.get_calib_dataset(
-                datasetname=self._datasetname,
-                num_samples=self._numsamples,
-                split=GPTQConfig["split"][self._datasetname],
-                seqlen=self._seqlen,
+            self._dataset = DatasetUtils.get_lm_dataset(
                 tokenizer=tokenizer,
+                dataset_name=self._datasetname,
+                split=GPTQConfig["split"][self._datasetname],
+                num_samples=self._numsamples,
+                seqlen=self._seqlen,
             )
         elif model.meta.model_type == ModelType.VLM:
             processor = AutoProcessor.from_pretrained(model.model_id, use_fast=True)
-            self._dataset = DatasetUtils.get_vlm_calib_dataset(
+            self._dataset = DatasetUtils.get_vlm_dataset(
                 processor,
-                dataset_name="HuggingFaceH4/llava-instruct-mix-vsft",
+                dataset_name="llava-instruct-mix-vsft",
                 num_samples=self.config.numsamples,
             )
 

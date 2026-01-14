@@ -13,6 +13,7 @@ from transformers.models.auto import AutoProcessor
 from GenAIQuant.logger import logger
 from GenAIQuant.model_preparer.utils import ModelType
 from GenAIQuant.utils.dataset_utils import DatasetProvider
+from GenAIQuant.algorithms.datasets.dataset import DatasetUtils
 
 from .base import BitAllocation
 from .collect_metrics import collect_metrics
@@ -258,9 +259,9 @@ class ShortGpt(BitAllocation):
             processor = AutoProcessor.from_pretrained(model.model_id, use_fast=True)
 
             logger.info(f"Getting calibration data from {self.config.dataset_name}")
-            calib_dataloader = get_vlm_calib_dataset(
+            calib_dataloader = DatasetUtils.get_vlm_dataset(
                 processor,
-                dataset_name="HuggingFaceH4/llava-instruct-mix-vsft",
+                dataset_name="llava-instruct-mix-vsft",
                 num_samples=self.config.num_samples,
             )
 
@@ -271,12 +272,12 @@ class ShortGpt(BitAllocation):
 
             logger.info(f"Getting calibration data from {self.config.dataset_name}")
 
-            calib_dataloader: list[tuple[torch.Tensor, ...]] = get_calib_dataset(
+            calib_dataloader: list[tuple[torch.Tensor, ...]] = DatasetUtils.get_lm_dataset(
                 tokenizer=tokenizer,
                 dataset_name=self.config.dataset_name,
                 num_samples=self.config.num_samples,
                 split="train",
-                seq_len=self.config.seq_len,
+                seqlen=self.config.seq_len,
             )
 
         assert calib_dataloader is not None
