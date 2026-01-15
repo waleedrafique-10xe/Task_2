@@ -369,6 +369,7 @@ class DatasetUtils:
         val_size: int = None,    # This will be used only in case of EQAT
         seed: int = 42,
         seqlen: int = 2048,
+        return_only_inputs: Optional[bool] = None
 
     ):
         # Initialize the seed
@@ -436,6 +437,9 @@ class DatasetUtils:
                 larger dataset or reduce 'training_seqlen' in config file"
             )
         
+        if return_only_inputs and num_samples:
+            return {'input_ids':raw_text['input_ids'][:, :num_samples]}
+
         if num_samples is not None:
             # GPTQ
             for _ in range(num_samples):

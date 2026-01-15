@@ -1,0 +1,17 @@
+device: cpu
+output_dir: output/spinquant
+quantization:
+    outlier_reduction:
+        algorithm: SpinQuant
+        max_steps: 1
+        online: false
+        per_device_train_batch_size: 1
+        w_groupsize: 64
+        a_bits: 8
+        k_bits: 8
+        v_bits: 8
+        a_asym: False
+        a_groupsize: 64
+    pipeline:
+        - outlier_reduction
+
