@@ -19,6 +19,8 @@ from GenAIQuant.algorithms.outlier_reduction.quarot.qutils import get_rotation_m
 from GenAIQuant.interfaces import RotationMatrices
 from GenAIQuant.model_preparer.utils import ModelType
 from GenAIQuant.utils import get_nested_attr
+from GenAIQuant.algorithms.datasets.dataset import DatasetUtils
+# from GenAIQuant.utils.dataset_utils import DatasetProvider
 
 from ..base import OutlierReduction
 from .optimizer import SGDG
@@ -35,6 +37,7 @@ from .utils import (
     OfflineRotation,
     OnlineRotation,
     RotateModule,
+    CustomDataset,
 )
 
 if TYPE_CHECKING:
@@ -227,15 +230,25 @@ class SpinQuant(OutlierReduction):
             layers[i].self_attn.R2 = RotateModule(Q2, self.device)
 
         original_model.config.use_cache = False
-        calibration_datasets = datasets.load_dataset(
-            "Salesforce/wikitext", "wikitext-2-raw-v1"
-        )
-        train_data = CustomJsonDataset(
-            calibration_datasets["train"],
-            tokenizer,
-            block_size=self.seqlen,
-        )
+        # calibration_datasets = datasets.load_dataset(
+        #     "Salesforce/wikitext", "wikitext-2-raw-v1"
+        # )
+        # train_data = CustomJsonDataset(
+        #     calibration_datasets["train"],
+        #     tokenizer,
+        #     block_size=self.seqlen,
+        # )
 
+        train_data = DatasetUtils.get_lm_dataset(
+                tokenizer=tokenizer,
+                dataset_name='wikitext',
+                num_samples=self.seqlen * 3, # This can be increased, thus needs discussion what should be the sample size
+                split="train",
+                seqlen=self.seqlen,
+                return_only_inputs=True
+            )
+
+        train_data_cls = CustomDataset(train_data)
         trainable_parameters = [original_model.R1.weight] + [
             layers[i].self_attn.R2.weight
             for i in range(model.model_config.num_hidden_layers)
@@ -245,7 +258,7 @@ class SpinQuant(OutlierReduction):
         trainer = Trainer(
             model=original_model,
             tokenizer=tokenizer,
-            train_dataset=train_data,
+            train_dataset=train_data_cls,
             args=training_arguments,
             data_collator=default_data_collator,
             optimizers=(optimizer, None),

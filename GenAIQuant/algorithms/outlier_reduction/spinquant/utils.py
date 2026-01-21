@@ -258,3 +258,23 @@ class CustomJsonDataset(torch.utils.data.IterableDataset):
         }
         result["labels"] = result["input_ids"].copy()
         return result
+
+import copy
+class CustomDataset(torch.utils.data.IterableDataset):
+    def __init__(self, dataset) -> None:
+        dataset['labels'] = copy.deepcopy(dataset["input_ids"])
+        self.input_ids = dataset["input_ids"]
+        self.labels = dataset['labels']
+        self.data = [
+            dict(input_ids=self.input_ids[i], labels=self.labels[i])
+            for i in range(len(self.input_ids))
+        ]
+
+    def __len__(self) -> int:
+        return len(self.data)
+
+    def __getitem__(self, i) -> Dict[str, Any]:
+        return dict(input_ids=self.input_ids[i], labels=self.labels[i])
+
+    def __iter__(self):
+        return iter(self.data)

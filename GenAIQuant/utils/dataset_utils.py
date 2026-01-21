@@ -65,112 +65,21 @@ class DatasetProvider:
             raise ValueError(
                 f"'{name_or_path}' is neither a supported dataset name nor a valid path."
             )
-        if data_type == "visual":
-            # grab a bit extra
-            self._dataset = ds
-            if num_samples != None:
-                sampled_iter = itertools.islice(ds, num_samples * oversample_factor)
-            else:
-                raise ValueError(
-                    f"Expected value for num_samples is integer for sampled_iter but found {num_samples}"
+        
+        # Optionally shuffle and select a sample
+        if num_samples is not None:
+            if not isinstance(ds, Dataset):
+                raise TypeError(
+                    "Sampling only supported for single split Dataset, not DatasetDict."
                 )
-            sampled_list = list(sampled_iter)
-            random.shuffle(sampled_list)
-
-            logger.info(f"Downloaded {len(sampled_list)} samples")
-
-            calib_data = []
-
-            for sample in sampled_list:
-                if len(calib_data) == num_samples:
-                    break
-                images = []
-                messages = []
-
-                for turn in sample["messages"]:  # type: ignore
-                    content = []
-                    for item in turn["content"]:
-                        if item["type"] == "text" and item["text"] is not None:
-                            content.append({"type": "text", "text": item["text"]})
-                        elif item["type"] == "image":
-                            # collect the PIL image and insert an image placeholder
-                            images.append(sample["images"][item["index"]])
-                            content.append({"type": "image"})
-                    messages.append({"role": turn["role"], "content": content})
-
-                if processor.chat_template is None:
-                    text_parts = []
-                    for message in messages:
-                        for item in message["content"]:
-                            if item["type"] == "text":
-                                text_parts.append(item["text"])
-                            elif item["type"] == "image":
-                                text_parts.append(
-                                    processor.tokenizer.special_tokens_map["boi_token"]
-                                )
-                    prompt = "\n\n".join(text_parts)
-
-                else:
-                    prompt = processor.apply_chat_template(
-                        messages, tokenize=False, add_generation_prompt=True
-                    )
-
-                try:
-                    inputs = processor(
-                        text=prompt, images=images, padding=True, return_tensors="pt"
-                    )
-                except ValueError as e:
-                    logger.warning(
-                        f"Found an invalid image with error: {e}. Skipping this sample"
-                    )
-                    continue
-
-                calib_data.append(inputs)
-
-            max_seqlen = max([x["input_ids"].shape[1] for x in calib_data])
-            pad_token_id = processor.tokenizer.pad_token_type_id
-
-            for data in calib_data:
-                data["input_ids"] = torch.nn.functional.pad(
-                    data["input_ids"],
-                    (0, max_seqlen - data["input_ids"].shape[1]),
-                    value=pad_token_id,
-                )
-                data["attention_mask"] = torch.nn.functional.pad(
-                    data["attention_mask"],
-                    (0, max_seqlen - data["attention_mask"].shape[1]),
-                    value=1,
-                )
-                # ^ assumes everything is 1 in mask. will fail assumption is violated
-
-                data["token_type_ids"] = torch.nn.functional.pad(
-                    data["token_type_ids"],
-                    (0, max_seqlen - data["token_type_ids"].shape[1]),
-                    value=0,
-                )
-                # ^ we assume token_type_ids is a mask that determines which tokens
-                # come from the image. Everything else (including padded tokens)
-                # should be zero as well
-
-            assert len(calib_data) == num_samples
-            logger.info(f"Obtained {num_samples} samples from {self._dataset_name}")
-            return calib_data
-        else:
-            # Optionally shuffle and select a sample
-            if num_samples is not None:
-                if not isinstance(ds, Dataset):
-                    raise TypeError(
-                        "Sampling only supported for single split Dataset, not DatasetDict."
-                    )
-                if shuffle:
-                    print(shuffle)
-                    ds = ds.shuffle()
-                    print(num_samples)
-                ds = ds.select(range(min(num_samples, len(ds))))
-
-            self._dataset = ds
-            self._dataset_name = name_or_path
-            return ds
+            if shuffle:
+                print(shuffle)
+                ds = ds.shuffle()
+                print(num_samples)
+            ds = ds.select(range(min(num_samples, len(ds))))
+        self._dataset = ds
+        self._dataset_name = name_or_path
+        return ds
 
     def _is_huggingface_dataset(self, name: str) -> bool:
         """

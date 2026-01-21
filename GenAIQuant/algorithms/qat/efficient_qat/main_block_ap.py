@@ -125,14 +125,13 @@ def main_block(config, interface, tokenizer, processor=None):
                 max_length=qat_config.training_seqlen,
             )
         else:
-            trainloader, valloader = DatasetUtils.get_dataset(
-                tokenizer,
-                qat_config.calib_dataset,
-                qat_config.train_size,
-                qat_config.val_size,
-                getattr(qat_config, "seed", 0),
-                qat_config.training_seqlen,
-                test_only=False,
+            trainloader, valloader = DatasetUtils.get_lm_dataset(
+                tokenizer=tokenizer,
+                dataset_name=qat_config.calib_dataset,
+                train_size=qat_config.train_size,
+                val_size=qat_config.val_size,
+                seed=getattr(qat_config, "seed", 0),
+                seqlen=qat_config.training_seqlen,
             )
         torch.save(trainloader, cache_trainloader)
         torch.save(valloader, cache_valloader)
