@@ -1,37 +1,16 @@
-device: cuda
-evaluation:
-    no_quantization: false
-    tasks:
-        MMBench_dev_en:
-            class: ImageMCQDataset
-            dataset: MMBench_dev_en
-        TextVQA_VAL:
-            class: ImageVQADataset
-            dataset: TextVQA_VAL
+device: cpu
 output_dir: output/spinquant_mbq
 quantization:
-    outlier_reduction:
-        algorithm: SpinQuant
-        max_steps: 100
-        online: false
-        per_device_train_batch_size: 2
-        w_groupsize: 64
-        a_bits: 8
-        k_bits: 8
-        v_bits: 8
-        a_asym: False
-        a_groupsize: 64
     pipeline:
-        - outlier_reduction
         - qat
     qat:
         algorithm: EfficientQat
         calib_dataset: redpajama
-        train_size: 4096
+        train_size: 1
         train_size_in_memory: null
-        val_size: 64
+        val_size: 1
         training_seqlen: 4096
-        batch_size: 2
+        batch_size: 1
         seed: 2
         wbits: 4
         group_size: 64
@@ -50,8 +29,8 @@ quantization:
         mbq:
             enabled: true
             dataset_name: AIMClab-RUC/COCO-CN
-            batch_size: 2
-            epochs: 2
+            batch_size: 1
+            epochs: 1
             wbits: 4
             group_size: 64
             kd_enabled: true
@@ -60,8 +39,8 @@ quantization:
             vision_weight: 0.1
             language_weight: 1.0
             reweight: true
-            train_size: 4096
-            val_size: 64
+            train_size: 1
+            val_size: 1
             vision_token_ids: []
-            teacher_device: cuda
+            teacher_device: cpu
             vision_bitwidth_overrides: {}

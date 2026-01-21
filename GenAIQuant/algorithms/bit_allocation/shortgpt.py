@@ -261,7 +261,7 @@ class ShortGpt(BitAllocation):
             logger.info(f"Getting calibration data from {self.config.dataset_name}")
             calib_dataloader = DatasetUtils.get_vlm_dataset(
                 processor,
-                dataset_name="llava-instruct-mix-vsft",
+                dataset_name="HuggingFaceH4/llava-instruct-mix-vsft",
                 num_samples=self.config.num_samples,
             )
 

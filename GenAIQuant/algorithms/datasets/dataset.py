@@ -371,7 +371,7 @@ class DatasetUtils:
         seqlen: int = 2048,
         return_only_inputs: Optional[bool] = None
 
-    ):
+    ) -> list[dict[str, torch.Tensor]]:
         # Initialize the seed
         random.seed(seed)
 
@@ -448,7 +448,8 @@ class DatasetUtils:
                 inp = raw_text.input_ids[:, i:j]
                 tar = inp.clone()
                 tar[:, :-1] = -100
-                train_loader.append((inp, tar))
+                # train_loader.append((inp, tar))
+                train_loader.append(dict(input_ids=inp, labels=tar))
             return train_loader
         else:
             val_sample_ratio = (
@@ -482,7 +483,7 @@ class DatasetUtils:
         num_samples: int = 128,
         split: str = "train",
         oversample_factor: int = 3,
-    ):
+    )-> list[dict[str, torch.Tensor]]:
         logger.info(f"Obtaining dataset {dataset_name} from Hugging face")
         streamed_dataset = load_dataset(dataset_name, split=split, streaming=True)
 
@@ -556,7 +557,7 @@ class DatasetUtils:
                 (0, max_seqlen - data["input_ids"].shape[1]),
                 value=pad_token_id,
             )
-            # We assume everything is 1 in mask. will fail assumption is violated
+            # We assume everything is 1 in mask. will fail if assumption is violated
             data["attention_mask"] = torch.nn.functional.pad(
                 data["attention_mask"],
                 (0, max_seqlen - data["attention_mask"].shape[1]),
@@ -566,11 +567,11 @@ class DatasetUtils:
             # We assume token_type_ids is a mask that determines which tokens
             # come from the image. Everything else (including padded tokens)
             # should be zero as well
-            data["token_type_ids"] = torch.nn.functional.pad(
-                data["token_type_ids"],
-                (0, max_seqlen - data["token_type_ids"].shape[1]),
-                value=0,
-            )
+            # data["token_type_ids"] = torch.nn.functional.pad(
+            #     data["token_type_ids"],
+            #     (0, max_seqlen - data["token_type_ids"].shape[1]),
+            #     value=0,
+            # )
 
         assert len(calib_data) == num_samples
         logger.info(f"Obtained {num_samples} samples from {dataset_name}")

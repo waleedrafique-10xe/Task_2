@@ -109,7 +109,8 @@ def _extract_llama_decoder_inputs(
     model: Model,
     num_samples: int,  # TODO: remove num samples -- not required
     seq_len: int,
-    dataloader: list[tuple[torch.Tensor, ...]],
+    # dataloader: list[tuple[torch.Tensor, ...]],
+    dataloader,
     device: str = "cpu",
 ) -> tuple[torch.Tensor, dict[str, torch.Tensor]]:
     dtype = next(iter(model.model.parameters())).dtype
@@ -157,7 +158,10 @@ def _extract_llama_decoder_inputs(
     with torch.no_grad():
         for batch in tqdm(dataloader, desc="Collecting inputs"):
             try:
-                model.model(batch[0].to(device))
+                # model.model(batch[0].to(device))
+                # batch = batch.to(device)
+                print(f'batch is {batch}')
+                model.model(**batch)
             except CatcherException:
                 # if this exception hits, the Catcher has captured the
                 # required values in `cache`
@@ -420,13 +424,15 @@ class Gptq(Ptq):
                 num_samples=self._numsamples,
                 seqlen=self._seqlen,
             )
+            print(f'language dataset is {self._dataset}')
         elif model.meta.model_type == ModelType.VLM:
             processor = AutoProcessor.from_pretrained(model.model_id, use_fast=True)
             self._dataset = DatasetUtils.get_vlm_dataset(
                 processor,
-                dataset_name="llava-instruct-mix-vsft",
+                dataset_name="HuggingFaceH4/llava-instruct-mix-vsft",
                 num_samples=self.config.numsamples,
             )
+            print(f'Vision dataset is {self._dataset}')
 
         use_cache = model.model_config.use_cache
         model.model_config.use_cache = False
